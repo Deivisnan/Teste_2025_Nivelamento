@@ -8,11 +8,13 @@ from pathlib import Path
 input_folder = Path.cwd() / 'input_files'
 extract_folder = Path.cwd() / 'extracted_files'
 output_folder = Path.cwd() / 'output_files'
+excel_folder = output_folder / 'excel_files'
 
 # Criando as pastas, caso não existam
 input_folder.mkdir(parents=True, exist_ok=True)
 extract_folder.mkdir(parents=True, exist_ok=True)
 output_folder.mkdir(parents=True, exist_ok=True)
+excel_folder.mkdir(parents=True, exist_ok=True)
 
 # Caminho para o arquivo zip
 zip_file_path = input_folder / 'anexos.zip'
@@ -93,52 +95,52 @@ df = df.apply(lambda col: col.map(lambda x: x.strip().upper() if isinstance(x, s
 # Removendo colunas desnecessárias (se houver colunas vazias ou irrelevantes)
 df.dropna(axis=1, how='all', inplace=True)
 
-# Criando o arquivo XLSX dentro do ZIP
+# Ajustando a largura das colunas e a altura das linhas
+excel_file_path = excel_folder / 'rol_de_procedimentos.xlsx'
+with pd.ExcelWriter(excel_file_path, engine='xlsxwriter') as writer:
+    df.to_excel(writer, index=False, sheet_name='Procedimentos')
+
+    # Acessando o objeto da planilha
+    workbook = writer.book
+    worksheet = writer.sheets['Procedimentos']
+
+    # Criando um formato de célula para a quebra de linha e altura de linha
+    cell_format = workbook.add_format({'text_wrap': True, 'valign': 'top'})
+
+    # Ajustando a largura das colunas
+    column_widths = {}
+    for idx, col in enumerate(df.columns):
+        max_len = df[col].astype(str).apply(len).max()  # Encontrando o comprimento máximo de cada coluna
+        adjusted_width = max_len + 4  # Dando um aumento de largura para garantir visibilidade
+        column_widths[idx] = adjusted_width
+
+    # Aumentando a largura das colunas
+    for idx, width in column_widths.items():
+        worksheet.set_column(idx, idx, width, cell_format)
+
+    # Ajustando a largura específica da coluna "PROCEDIMENTO" para 40
+    procedimento_col_idx = df.columns.get_loc("PROCEDIMENTO")  # Encontrando o índice da coluna "PROCEDIMENTO"
+    worksheet.set_column(procedimento_col_idx, procedimento_col_idx, 40, cell_format)
+
+    # Ajustando a altura das linhas para 30 (40 pixels)
+    worksheet.set_default_row(30)
+
+    # Destacando os títulos das colunas com uma cor específica
+    header_format = workbook.add_format({'bold': True, 'bg_color': '#FFFF00', 'font_color': '#000000'})  # Amarelo com texto preto
+    for col_num, value in enumerate(df.columns.values):
+        worksheet.write(0, col_num, value, header_format)
+
+# Salvando os dados em um arquivo CSV na pasta de saída
+csv_file_path = output_folder / 'rol_de_procedimentos.csv'
+df.to_csv(csv_file_path, index=False)
+
+# Compactando o CSV em um arquivo ZIP na pasta de saída
 zip_output = output_folder / f'Teste_{os.getlogin()}.zip'
-
-# Criando o arquivo XLSX dentro do ZIP
 with zipfile.ZipFile(zip_output, 'w') as zipf:
-    with zipf.open('rol_de_procedimentos.xlsx', 'w') as buffer:
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Procedimentos')
+    zipf.write(csv_file_path, 'rol_de_procedimentos.csv')
 
-            # Acessando o objeto da planilha
-            workbook = writer.book
-            worksheet = writer.sheets['Procedimentos']
+# Removendo o arquivo CSV após a compactação
+csv_file_path.unlink()
 
-            # Criando um formato de célula para a quebra de linha e altura de linha
-            cell_format = workbook.add_format({'text_wrap': True, 'valign': 'top', 'border': 1})
-
-            # Ajustando a largura das colunas
-            column_widths = {}
-            for idx, col in enumerate(df.columns):
-                max_len = df[col].astype(str).apply(len).max()  # Encontrando o comprimento máximo de cada coluna
-                adjusted_width = max_len + 4  # Dando um aumento de largura para garantir visibilidade
-                column_widths[idx] = adjusted_width
-
-            # Aumentando a largura das colunas
-            for idx, width in column_widths.items():
-                worksheet.set_column(idx, idx, width, cell_format)
-
-            # Ajustando a largura específica da coluna "PROCEDIMENTO" para 40
-            procedimento_col_idx = df.columns.get_loc("PROCEDIMENTO")  # Encontrando o índice da coluna "PROCEDIMENTO"
-            worksheet.set_column(procedimento_col_idx, procedimento_col_idx, 40, cell_format)
-
-            # Ajustando a altura das linhas para 30 (40 pixels)
-            worksheet.set_default_row(30)
-
-            # Destacando os títulos das colunas com uma cor específica
-            header_format = workbook.add_format({'bold': True, 'bg_color': '#FFFF00', 'font_color': '#000000', 'border': 1})  # Amarelo com texto preto
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-
-            # Adicionando bordas em todas as células (inclusive no cabeçalho)
-            for row in range(df.shape[0]):
-                for col in range(df.shape[1]):
-                    worksheet.write(row + 1, col, df.iloc[row, col], cell_format)
-
-            # Adicionando borda para o cabeçalho
-            for col_num in range(len(df.columns)):
-                worksheet.write(0, col_num, df.columns[col_num], header_format)
-
-print(f"Arquivo ZIP gerado com sucesso: {zip_output}")
+print(f"Arquivo Excel salvo em: {excel_file_path}")
+print(f"CSV compactado em: {zip_output}")

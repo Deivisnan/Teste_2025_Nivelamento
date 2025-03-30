@@ -3,13 +3,19 @@ from bs4 import BeautifulSoup
 import zipfile
 import os
 import time
+from pathlib import Path
+
+# Definir diretórios
+BASE_DIR = Path.cwd()
+INPUT_FOLDER = BASE_DIR / 'input_files'
+DOWNLOAD_FOLDER = INPUT_FOLDER / 'downloads'
+
+# Criar diretórios caso não existam
+INPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+DOWNLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # URL da página de onde vamos fazer o web scraping
 URL = 'https://www.gov.br/ans/pt-br/acesso-a-informacao/participacao-da-sociedade/atualizacao-do-rol-de-procedimentos'
-
-# Criar uma pasta temporária para armazenar os PDFs
-PASTA_DOWNLOADS = 'downloads'
-os.makedirs(PASTA_DOWNLOADS, exist_ok=True)
 
 # Função para tentar a requisição várias vezes em caso de falha
 def tentar_requisicao(url, tentativas=10, timeout=20):
@@ -22,7 +28,7 @@ def tentar_requisicao(url, tentativas=10, timeout=20):
             print(f"Tentativa {tentativa + 1} falhou: {e}")
             if tentativa < tentativas - 1:
                 print("Tentando novamente em 5 segundos...")
-                time.sleep(5)  # Aguarda 5 segundos antes de tentar novamente
+                time.sleep(5)
             else:
                 print("Máximo de tentativas alcançado, erro persistente.")
                 raise
@@ -45,24 +51,20 @@ for link in soup.find_all('a', href=True):
     if ('anexo' in texto_link) and ('.pdf' in href):  # Filtra somente links .pdf
         pdf_links.append(link['href'])
 
-# Garantir que os links são absolutos (caso estejam como links relativos)
+# Garantir que os links são absolutos
 pdf_links = [link if link.startswith('http') else f'https://www.gov.br{link}' for link in pdf_links]
 
-
-# Garantir que os links sejam absolutos
-pdf_links = [link if link.startswith('http') else f'https://www.gov.br{link}' for link in pdf_links]
 # Criar um mapeamento entre o link e o nome do arquivo baixado
-
 mapeamento = {}
 
 # Baixar os PDFs encontrados
 pdf_files = []
 for i, link in enumerate(pdf_links, 1):
     try:
-        print(f"Iniciando download do PDF {i} do link: {link}")  # Imprime o link do PDF
+        print(f"Iniciando download do PDF {i} do link: {link}")
         response = requests.get(link, timeout=10)
-        response.raise_for_status()  # Verifica se o download foi bem-sucedido
-        filename = os.path.join(PASTA_DOWNLOADS, f'anexo_{i}.pdf')
+        response.raise_for_status()
+        filename = DOWNLOAD_FOLDER / f'anexo_{i}.pdf'
         with open(filename, 'wb') as file:
             file.write(response.content)
         pdf_files.append(filename)
@@ -77,17 +79,17 @@ for i, link in enumerate(pdf_links, 1):
 for link, arquivo in mapeamento.items():
     print(f"Link: {link} -> Arquivo: {arquivo}")
 
-# Compactar os arquivos PDF em um arquivo ZIP
-zip_filename = 'anexos.zip'
+# Compactar os arquivos PDF em um arquivo ZIP dentro de input_files
+zip_filename = INPUT_FOLDER / 'anexos.zip'
 with zipfile.ZipFile(zip_filename, 'w') as zipf:
     for pdf in pdf_files:
-        zipf.write(pdf, os.path.basename(pdf))  # Adiciona apenas o nome do arquivo ao ZIP
+        zipf.write(pdf, pdf.name)  # Adiciona apenas o nome do arquivo ao ZIP
 
 print(f"Compactação concluída: {zip_filename}")
 
 # Limpeza dos arquivos temporários
 for pdf in pdf_files:
-    os.remove(pdf)
-os.rmdir(PASTA_DOWNLOADS)
+    pdf.unlink()
+DOWNLOAD_FOLDER.rmdir()
 
 print("Processo finalizado com sucesso!")
